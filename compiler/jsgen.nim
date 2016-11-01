@@ -138,7 +138,7 @@ proc declareGlobal(p: PProc; id: int; r: Rope) =
 
 const
   MappedToObject = {tyObject, tyArray, tyArrayConstr, tyTuple, tyOpenArray,
-    tySet, tyBigNum, tyVarargs}
+    tySet, tyVarargs}
 
 proc mapType(typ: PType): TJSTypeKind =
   let t = skipTypes(typ, abstractInst)
@@ -151,15 +151,13 @@ proc mapType(typ: PType): TJSTypeKind =
   of tyPointer:
     # treat a tyPointer like a typed pointer to an array of bytes
     result = etyBaseIndex
-  of tyRange, tyDistinct, tyOrdinal, tyConst, tyMutable, tyIter, tyProxy:
-    result = mapType(t.sons[0])
+  of tyRange, tyDistinct, tyOrdinal, tyProxy: result = mapType(t.sons[0])
   of tyInt..tyInt64, tyUInt..tyUInt64, tyEnum, tyChar: result = etyInt
   of tyBool: result = etyBool
   of tyFloat..tyFloat128: result = etyFloat
   of tySet: result = etyObject # map a set to a table
   of tyString, tySequence: result = etySeq
-  of tyObject, tyArray, tyArrayConstr, tyTuple, tyOpenArray, tyBigNum,
-     tyVarargs:
+  of tyObject, tyArray, tyArrayConstr, tyTuple, tyOpenArray, tyVarargs:
     result = etyObject
   of tyNil: result = etyNull
   of tyGenericInst, tyGenericParam, tyGenericBody, tyGenericInvocation,
@@ -171,6 +169,7 @@ proc mapType(typ: PType): TJSTypeKind =
     else: result = etyNone
   of tyProc: result = etyProc
   of tyCString: result = etyString
+  of tyUnused, tyUnused0, tyUnused1, tyUnused2: internalError("mapType")
 
 proc mapType(p: PProc; typ: PType): TJSTypeKind =
   if p.target == targetPHP: result = etyObject
@@ -2277,7 +2276,7 @@ proc myOpenCached(s: PSym, rd: PRodReader): PPassContext =
   internalError("symbol files are not possible with the JS code generator")
   result = nil
 
-proc myOpen(s: PSym): PPassContext =
+proc myOpen(s: PSym; cache: IdentCache): PPassContext =
   var r = newModule(s)
   r.target = if gCmd == cmdCompileToPHP: targetPHP else: targetJS
   result = r

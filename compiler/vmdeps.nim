@@ -19,7 +19,8 @@ proc readOutput(p: Process): string =
     result.setLen(result.len - "\n".len)
   discard p.waitForExit
 
-proc opGorge*(cmd, input, cache: string): string =
+proc opGorge*(cmd, input, cache: string, info: TLineInfo): string =
+  let workingDir = parentDir(info.toFullPath)
   if cache.len > 0:# and optForceFullMake notin gGlobalOptions:
     let h = secureHash(cmd & "\t" & input & "\t" & cache)
     let filename = options.toGeneratedFile("gorge_" & $h, "txt")
@@ -30,7 +31,8 @@ proc opGorge*(cmd, input, cache: string): string =
       return
     var readSuccessful = false
     try:
-      var p = startProcess(cmd, options={poEvalCommand, poStderrToStdout})
+      var p = startProcess(cmd, workingDir,
+                           options={poEvalCommand, poStderrToStdout})
       if input.len != 0:
         p.inputStream.write(input)
         p.inputStream.close()
@@ -41,7 +43,8 @@ proc opGorge*(cmd, input, cache: string): string =
       if not readSuccessful: result = ""
   else:
     try:
-      var p = startProcess(cmd, options={poEvalCommand, poStderrToStdout})
+      var p = startProcess(cmd, workingDir,
+                           options={poEvalCommand, poStderrToStdout})
       if input.len != 0:
         p.inputStream.write(input)
         p.inputStream.close()
@@ -266,11 +269,7 @@ proc mapTypeToAstX(t: PType; info: TLineInfo;
   of tyUInt16: result = atomicType("uint16", mUint16)
   of tyUInt32: result = atomicType("uint32", mUint32)
   of tyUInt64: result = atomicType("uint64", mUint64)
-  of tyBigNum: result = atomicType("bignum", mNone)
-  of tyConst: result = mapTypeToBracket("const", mNone, t, info)
-  of tyMutable: result = mapTypeToBracket("mutable", mNone, t, info)
   of tyVarargs: result = mapTypeToBracket("varargs", mVarargs, t, info)
-  of tyIter: result = mapTypeToBracket("iter", mNone, t, info)
   of tyProxy: result = atomicType("error", mNone)
   of tyBuiltInTypeClass:
     result = mapTypeToBracket("builtinTypeClass", mNone, t, info)
@@ -292,6 +291,7 @@ proc mapTypeToAstX(t: PType; info: TLineInfo;
       result.add atomicType("static", mNone)
       if t.n != nil:
         result.add t.n.copyTree
+  of tyUnused, tyUnused0, tyUnused1, tyUnused2: internalError("mapTypeToAstX")
 
 proc opMapTypeToAst*(t: PType; info: TLineInfo): PNode =
   result = mapTypeToAstX(t, info, false, true)

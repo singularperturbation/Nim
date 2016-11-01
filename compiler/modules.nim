@@ -167,7 +167,7 @@ proc newModule(fileIdx: int32): PSym =
   # strTableIncl() for error corrections:
   discard strTableIncl(packSym.tab, result)
 
-proc compileModule*(fileIdx: int32, flags: TSymFlags): PSym =
+proc compileModule*(fileIdx: int32; cache: IdentCache, flags: TSymFlags): PSym =
   result = getModule(fileIdx)
   if result == nil:
     growCache gMemCacheData, fileIdx
@@ -180,26 +180,28 @@ proc compileModule*(fileIdx: int32, flags: TSymFlags): PSym =
       gMainPackageId = result.owner.id
 
     if gCmd in {cmdCompileToC, cmdCompileToCpp, cmdCheck, cmdIdeTools}:
-      rd = handleSymbolFile(result)
+      rd = handleSymbolFile(result, cache)
       if result.id < 0:
         internalError("handleSymbolFile should have set the module\'s ID")
         return
     else:
       result.id = getID()
-    let validFile = processModule(result, if sfMainModule in flags and gProjectIsStdin: llStreamOpen(stdin) else: nil, rd)
+    let validFile = processModule(result,
+      if sfMainModule in flags and gProjectIsStdin: stdin.llStreamOpen else: nil,
+      rd, cache)
     if optCaasEnabled in gGlobalOptions:
       gMemCacheData[fileIdx].compiledAt = gLastCmdTime
       gMemCacheData[fileIdx].needsRecompile = Recompiled
       if validFile: doHash fileIdx
   else:
     if checkDepMem(fileIdx) == Yes:
-      result = compileModule(fileIdx, flags)
+      result = compileModule(fileIdx, cache, flags)
     else:
       result = gCompiledModules[fileIdx]
 
-proc importModule*(s: PSym, fileIdx: int32): PSym {.procvar.} =
+proc importModule*(s: PSym, fileIdx: int32; cache: IdentCache): PSym {.procvar.} =
   # this is called by the semantic checking phase
-  result = compileModule(fileIdx, {})
+  result = compileModule(fileIdx, cache, {})
   if optCaasEnabled in gGlobalOptions: addDep(s, fileIdx)
   #if sfSystemModule in result.flags:
   #  localError(result.info, errAttemptToRedefine, result.name.s)
@@ -207,17 +209,17 @@ proc importModule*(s: PSym, fileIdx: int32): PSym {.procvar.} =
   gNotes = if s.owner.id == gMainPackageId: gMainPackageNotes
            else: ForeignPackageNotes
 
-proc includeModule*(s: PSym, fileIdx: int32): PNode {.procvar.} =
-  result = syntaxes.parseFile(fileIdx)
+proc includeModule*(s: PSym, fileIdx: int32; cache: IdentCache): PNode {.procvar.} =
+  result = syntaxes.parseFile(fileIdx, cache)
   if optCaasEnabled in gGlobalOptions:
     growCache gMemCacheData, fileIdx
     addDep(s, fileIdx)
     doHash(fileIdx)
 
-proc compileSystemModule* =
+proc compileSystemModule*(cache: IdentCache) =
   if magicsys.systemModule == nil:
     systemFileIdx = fileInfoIdx(options.libpath/"system.nim")
-    discard compileModule(systemFileIdx, {sfSystemModule})
+    discard compileModule(systemFileIdx, cache, {sfSystemModule})
 
 proc wantMainModule* =
   if gProjectFull.len == 0:
@@ -227,15 +229,15 @@ proc wantMainModule* =
 passes.gIncludeFile = includeModule
 passes.gImportModule = importModule
 
-proc compileProject*(projectFileIdx = -1'i32) =
+proc compileProject*(cache: IdentCache; projectFileIdx = -1'i32) =
   wantMainModule()
   let systemFileIdx = fileInfoIdx(options.libpath / "system.nim")
   let projectFile = if projectFileIdx < 0: gProjectMainIdx else: projectFileIdx
   if projectFile == systemFileIdx:
-    discard compileModule(projectFile, {sfMainModule, sfSystemModule})
+    discard compileModule(projectFile, cache, {sfMainModule, sfSystemModule})
   else:
-    compileSystemModule()
-    discard compileModule(projectFile, {sfMainModule})
+    compileSystemModule(cache)
+    discard compileModule(projectFile, cache, {sfMainModule})
 
 proc makeModule*(filename: string): PSym =
   result = newModule(fileInfoIdx filename)

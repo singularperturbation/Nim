@@ -38,6 +38,14 @@ proc getSysSym*(name: string): PSym =
   if result.kind == skStub: loadStub(result)
   if result.kind == skAlias: result = result.owner
 
+proc createMagic*(name: string, m: TMagic): PSym =
+  result = newSym(skProc, getIdent(name), nil, unknownLineInfo())
+  result.magic = m
+
+let
+  opNot* = createMagic("not", mNot)
+  opContains* = createMagic("contains", mInSet)
+
 proc getSysMagic*(name: string, m: TMagic): PSym =
   var ti: TIdentIter
   let id = getIdent(name)
